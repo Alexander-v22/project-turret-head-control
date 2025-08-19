@@ -1,3 +1,12 @@
+<!--
+=========TODO LIST============
+1. change the parameters on the eruo filter to make servo transitions smoother
+2. change hard dead zone to softer deadzone 
+3.  
+
+
+-->
+
 <script>
   import { onMount } from 'svelte';
   import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
@@ -14,26 +23,62 @@
   let ws = null;
   let lastSend = 0;
 
+  let minCutoff = 0.8;
+  let beta = 0.02;
+  let d_cutoff = 0.8;
+
   // --- Tuning ---
-  const SEND_EVERY_MS = 60;         // ~16 Hz
-  const SENS_YAW = 60;
-  const SENS_PITCH = 60;
+  const SEND_EVERY_MS = 40;         // ~25 Hz
+  const SENS_YAW = 50;
+  const SENS_PITCH = 50;
   const MAX_YAW = 90;
   const MAX_PITCH = 45;
   const DEADZONE_YAW = 1.0;
   const DEADZONE_PITCH = 1.0;
   const RETRY_MS = 1000;
+ 
+ 
+ 
+  onMount(async () => {
+    connectWS();
+    window.addEventListener('beforeunload', () => ws?.close());
+
+    const fileset = await FilesetResolver.forVisionTasks('/mediapipe'); // serve WASM assets here
+    faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: '/mediapipe/face_landmarker.task' },
+      runningMode: 'VIDEO',
+      numFaces: 1,
+      outputFaceBlendshapes: false,
+      outputFacialTransformationMatrixes: false
+    });
+  });
+
 
   // Helpers
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-  const dz = (v, d) => (Math.abs(v) < d ? 0 : v);
+  const dz = (v, d) => (Math.abs(v) < d ? 0 : v); //going to add soft dead band instead 
 
-  //1-EURO FILTER
-  //beta spead coefficient 
-  //d_cutoff is the default constnat cutoff frequnecy
+  function softDeadband(v,  width = 0.8) {
+    const k = 2.2/ width;
+    return Math.tanh(k * v ) / Math.tanh(k * width ) * width ;
+  }
+
+  /* 
+  1-EURO FILTER
+  ---------------
+  beta spead coefficient 
+  d_cutoff is the default constant cutoff frequnecy
+  --------------------------------------------------
 
 
-function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0 } = {}) {
+  minCutoff smoother when when still
+  beta= more Response when moving 
+  d_cutoff= smoother (less noisy) velocity estimate
+  */
+
+
+
+function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0} = {}) {
   let hasPrev = false;
   let xPrev = 0;
   let dxPrev = 0;
@@ -66,12 +111,12 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0 } = {}) {
     const dt = Math.max(1e-3, t - tPrev) ; // avoiding 0 or a negative number => Te​=Ti​−Ti−1​ deriv of sampling frequnecy
 
     //smooth deriv
-    const dx = (x - xPrev) / dt; // => X˙i​=(Xi​−Xi−1) Te​​
+    const dx = Math.max(-200, Math.min(200, (x - xPrev) / dt)); // deg/s clamp => X˙i​=(Xi​−Xi−1) Te​​
     const aD = alpha(d_cutoff,dt); // => Smoothing-Factor(Te​,fcd​​)
     const dxhat = expo_smoothing(aD, dx, dxPrev)// => exponential smoothing 
 
     // the filtered signal 
-    const cutoff = minCutoff + beta * Math.abs(dxhat);
+    const cutoff = Math.min(4.0, minCutoff + beta * Math.abs(dxhat)); // clamp to max ~4 had to change because a bad frame could cause dx to spike 
     const aX= alpha(cutoff, dt );
     const xhat = expo_smoothing(aX, x, xPrev);
 
@@ -96,8 +141,8 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0 } = {}) {
 }
 
 
-  const yawFilter =  oneEuro({minCutoff:1.0, beta: 0.02});
-  const pitchfilter = oneEuro({minCutoff:1.0, beta: 0.02});
+  const yawFilter =  oneEuro({minCutoff, beta, d_cutoff});
+  const pitchfilter = oneEuro({minCutoff, beta, d_cutoff});
 
 
   function connectWS() {
@@ -122,19 +167,7 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0 } = {}) {
   }
 
   // MediaPipe init
-  onMount(async () => {
-    connectWS();
-    window.addEventListener('beforeunload', () => ws?.close());
-
-    const fileset = await FilesetResolver.forVisionTasks('/mediapipe'); // serve WASM assets here
-    faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: '/mediapipe/face_landmarker.task' },
-      runningMode: 'VIDEO',
-      numFaces: 1,
-      outputFaceBlendshapes: false,
-      outputFacialTransformationMatrixes: false
-    });
-  });
+ 
 
   async function startCamera() {
     if (detectorRunning) return;
@@ -158,7 +191,9 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0 } = {}) {
       stream.getTracks().forEach((t) => t.stop());
       stream = null;
     }
+   
     detectorRunning = false;
+
   }
 
   function toggleCamera() {
@@ -220,13 +255,28 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0 } = {}) {
   {detectorRunning ? 'Stop Camera' : 'Start Camera'}
 </button>
 
-<main class="flex-1 max-w-6xl mx-auto px-20 justify-center">
+<main class="flex-1 max-w-6xl mx-auto px-30 justify-center">
   <h1 class="text-7xl py-5 text-center font-semibold mb-5">Turret Face Control</h1>
-  <h2 class="py-2 text-2xl px-15">Introduction</h2>
-  <p class="text-lg px-20">Control the turret with your head movement.</p>
+  <h2 class="py-2 text-2xl ">Introduction</h2>
+  <p class="text-lg px-5 mb-20">Control the turret with your head movement.</p>
+
+<div class="grid grid-cols-3 bg-black text-white p-3 rounded-xl space-y-2 text-xl">
+  
+    <label class="block mr-4">minCutoff: <input type="range" min="0.1" max="5" step="0.1" bind:value={minCutoff}></label>
+    <label class="block mr-4">beta: <input type="range" min="0" max="0.2" step="0.005" bind:value={beta}></label>
+    <label class="block mr-4">d_cutoff: <input type="range" min="0.5" max="3" step="0.1" bind:value={d_cutoff}></label>
+ 
+    <div class="text-xl text-white mr-4" >minCutoff {minCutoff.toFixed(2)} </div>
+    <div class="text-xl text-white mr-4" > beta {beta.toFixed(3)}</div>
+    <div class="text-xl text-white mr-4" > d_cutoff {d_cutoff.toFixed(1)}</div>
+
+
+</div>
+
+
 </main>
 
-<div class="flex flex-col items-center justify-center min-h-screen text-center space-y-6">
+<div class="flex flex-col items-center justify-center min-h-screen text-center space-y-6 ">
   <div class="flex justify-center w-full">
     <video bind:this={videoEl} autoplay playsinline muted width="640" height="440"
       class={`rounded-2xl shadow border-2 border-gray-900 ${detectorRunning ? 'opacity-100' : 'opacity-0'}`} ></video>
