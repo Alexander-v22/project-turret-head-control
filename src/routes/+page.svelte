@@ -38,7 +38,7 @@
   const RETRY_MS = 1000;
  
  
- 
+// Media pie initiation 
   onMount(async () => {
     connectWS();
     window.addEventListener('beforeunload', () => ws?.close());
@@ -58,25 +58,23 @@
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const dz = (v, d) => (Math.abs(v) < d ? 0 : v); //going to add soft dead band instead 
 
-  function softDeadband(v,  width = 0.8) {
-    const k = 2.2/ width;
-    return Math.tanh(k * v ) / Math.tanh(k * width ) * width ;
-  }
+  // function softDeadband(v,  width = 0.8) {
+  //   const k = 2.2/ width;
+  //   return Math.tanh(k * v ) / Math.tanh(k * width ) * width ;
+  // }
 
   /* 
   1-EURO FILTER
   ---------------
-  beta spead coefficient 
+  beta speed coefficient 
   d_cutoff is the default constant cutoff frequnecy
   --------------------------------------------------
 
 
-  minCutoff smoother when when still
-  beta= more Response when moving 
-  d_cutoff= smoother (less noisy) velocity estimate
+  minCutoff = smoother when when still
+  beta = more Response when moving 
+  d_cutoff = smoother (less noisy) velocity estimate
   */
-
-
 
 function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0} = {}) {
   let hasPrev = false;
@@ -84,13 +82,12 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0} = {}) {
   let dxPrev = 0;
   let tPrev = 0;
     
-// r = 2pi *cutoff frequency * change in sampling freqeuncy
+// r = 2pi * cutoff frequency * change in sampling freqeuncy
   const alpha = (cutoff, dt) => {
     const r = 2 * Math.PI * cutoff * dt;
     return r / (r + 1); 
   };
 
-  // 
   const expo_smoothing = (a, x, prev) => {
   return a*x + (1 - a)* prev ;
   };
@@ -165,8 +162,6 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0} = {}) {
     lastSend = now;
     ws.send(JSON.stringify({ yaw, pitch })); // ESP expects these keys
   }
-
-  // MediaPipe init
  
 
   async function startCamera() {
@@ -269,8 +264,6 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0} = {}) {
     <div class="text-xl text-white mr-4" >minCutoff {minCutoff.toFixed(2)} </div>
     <div class="text-xl text-white mr-4" > beta {beta.toFixed(3)}</div>
     <div class="text-xl text-white mr-4" > d_cutoff {d_cutoff.toFixed(1)}</div>
-
-
 </div>
 
 
