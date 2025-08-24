@@ -1,20 +1,8 @@
-<!--
-=========TODO LIST============
-1. change the parameters on the eruo filter to make servo transitions smoother
-2. change hard dead zone to softer deadzone 
-3.  
-
-
--->
-
-<script>
+<script> 
   import { onMount } from 'svelte';
   import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
   import { WS_URL } from '$lib/config.js';
   import { applyAction } from '$app/forms';
-
-
-
   
   let videoEl;
   let detectorRunning = false;
@@ -36,7 +24,6 @@
   const DEADZONE_YAW = 1.0;
   const DEADZONE_PITCH = 1.0;
   const RETRY_MS = 1000;
-  const MIRROR_PREVIEW = true; //  <video> uses scaleX(-1)
  
  
 // Media pie initiation 
@@ -137,8 +124,11 @@ function oneEuro({minCutoff= 1.0, beta = 0.02, d_cutoff = 1.0} = {}) {
 }
 
 
-  const yawFilter =  oneEuro({minCutoff, beta, d_cutoff});
-  const pitchfilter = oneEuro({minCutoff, beta, d_cutoff});
+  // Yaw: a hair snappier
+  const yawFilter = oneEuro({ minCutoff: 0.6, beta: 0.04, d_cutoff: 1.5 });
+  // Pitch: a touch smoother
+  const pitchfilter = oneEuro({ minCutoff: 0.5, beta: 0.03, d_cutoff: 1.2 });
+
 
 $: yawFilter.setParams({ minCutoff, beta, d_cutoff });
 $: pitchfilter.setParams({ minCutoff, beta, d_cutoff });
@@ -261,7 +251,7 @@ $: pitchfilter.setParams({ minCutoff, beta, d_cutoff });
         const offX = (nose.x - eyesMid.x) / eyesDist;  // +right in image space
         const offY = (nose.y - eyesMid.y) / eyesDist;  // +down  in image space
 
-        // --- YAW: 3D preferred, fallback to 2D ---
+        // --- YAW: 3D preferred, fallback to 2D SAME logic for pitch ---
         let yawDeg = yawFromMatrixDeg(M);
         let pitchDeg = pitchFromMatrixDeg(M);
 
@@ -269,18 +259,20 @@ $: pitchfilter.setParams({ minCutoff, beta, d_cutoff });
           yawDeg = offX * SENS_YAW;
         }
          if (pitchDeg == null){
-          pitchDeg = offX * SENS_YAW;
+          pitchDeg = offY * SENS_YAW;
         }
 
-        // --- PITCH: always 2D (define +pitch = look UP) ---
-
-        // --- Deadband + clamp ---
-        let yaw = clamp(softDeadband(yawDeg,   DEADZONE_YAW), -MAX_YAW, +MAX_YAW);
-        let pitch = clamp(softDeadband(pitchDeg, DEADZONE_PITCH), -MAX_PITCH, +MAX_PITCH);
-
         // --- Filters ---
-        yaw = yawFilter.filter(yaw, ts);
-        pitch = pitchfilter.filter(pitch, ts);
+        let yaw   = yawFilter.filter(yawDeg, ts);
+        let pitch = pitchfilter.filter(pitchDeg, ts);
+        
+        yaw = softDeadband(yawDeg,   DEADZONE_YAW);
+        pitch = softDeadband(pitchDeg, DEADZONE_PITCH);
+
+        yaw   = clamp(yaw,   -MAX_YAW,   +MAX_YAW);
+        pitch = clamp(pitch, -MAX_PITCH, +MAX_PITCH);
+
+
 
         // --- Send in ESP order ---
         sendYawPitch(yaw, pitch);

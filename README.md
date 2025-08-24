@@ -1,5 +1,12 @@
 # Turret Face Control — Frontend README
 
+![C](https://img.shields.io/badge/Language-C-blue)
+![ESP-IDF](https://img.shields.io/badge/Framework-ESP--IDF-green)
+![FreeRTOS](https://img.shields.io/badge/RTOS-FreeRTOS-orange)
+![WiFi](https://img.shields.io/badge/Connectivity-WiFi-lightgrey)
+![WebSocket](https://img.shields.io/badge/Protocol-WebSocket-purple)
+
+
 This page is the **browser side** of a two-part system that lets you control a **pan/tilt turret** with your **head movement**. It demonstrates **real-time computer vision**, **signal processing**, and a clean **human-to-robot control loop** that streams directly to embedded hardware.
 
 ---
